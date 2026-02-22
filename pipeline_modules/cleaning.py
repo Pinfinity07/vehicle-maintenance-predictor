@@ -10,26 +10,31 @@ Original file is located at
 import warnings
 warnings.filterwarnings("ignore")
 
+# Importing necessary libraries
 import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from datetime import date
+
+# Downloading the dataset from Kaggle
 import kagglehub
 path = kagglehub.dataset_download("chavindudulaj/vehicle-maintenance-data")
 
 file_path = os.path.join(path, "vehicle_maintenance_data.csv")
 df = pd.read_csv(file_path)
+
+# Initial data exploration
+df.shape
 df.head(3)
 
-df.shape
-
+# Data Cleaning
 df.drop_duplicates(inplace=True)
 df.dropna(inplace=True)
 df.reset_index(drop=True, inplace=True)
 
+# Feature Engineering
 REFERENCE_DATE = pd.Timestamp("2026-02-20")
 
 for col in ["Last_Service_Date", "Warranty_Expiry_Date"]:
@@ -41,6 +46,7 @@ df.drop(columns=["Last_Service_Date", "Warranty_Expiry_Date"], inplace=True)
 numerical_cols_raw = df.select_dtypes(include=[np.number]).columns.tolist()
 numerical_cols_raw.remove("Need_Maintenance")
 
+# Handling outliers using the IQR method
 for col in numerical_cols_raw:
     Q1 = df[col].quantile(0.25)
     Q3 = df[col].quantile(0.75)
