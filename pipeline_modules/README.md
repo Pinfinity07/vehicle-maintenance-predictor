@@ -1,1 +1,0 @@
-This folder will contain each module that will contribute towards the final pipeline (~ Cleaning.ipynb, Encoding.ipynb)

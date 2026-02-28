@@ -1,25 +1,23 @@
 import numpy as np
 import pandas as pd
 
-from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, RobustScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, RobustScaler, LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import mutual_info_classif
 from imblearn.over_sampling import SMOTE
 
-from pipeline_modules.cleaning import load_and_preprocess_data
+from .cleaning import load_and_preprocess_data
 
 
 def encode_and_split():
+    """Encode features and split data into train/test sets with SMOTE."""
     df = load_and_preprocess_data()
 
-
-    # Mutual Information Feature Selection
-
+    # ── Mutual Information Feature Selection ──
     df_encoded = df.copy()
     cat_cols = df_encoded.select_dtypes(include="object").columns.tolist()
 
-    from sklearn.preprocessing import LabelEncoder
     le = LabelEncoder()
     for c in cat_cols:
         df_encoded[c] = le.fit_transform(df_encoded[c].astype(str))
@@ -37,9 +35,7 @@ def encode_and_split():
     if zero_mi_features:
         df.drop(columns=zero_mi_features, inplace=True)
 
-
-    # Feature Categorization
-
+    # ── Feature Categorization ──
     ordinal_features = {
         "Maintenance_History": ["Poor", "Average", "Good"],
         "Tire_Condition": ["Worn Out", "Good", "New"],
@@ -52,8 +48,7 @@ def encode_and_split():
     }
 
     nominal_features = [
-        c for c in ["Vehicle_Model", "Fuel_Type",
-                    "Transmission_Type", "Owner_Type"]
+        c for c in ["Vehicle_Model", "Fuel_Type", "Transmission_Type", "Owner_Type"]
         if c in df.columns
     ]
 
@@ -62,9 +57,7 @@ def encode_and_split():
         if c != "Need_Maintenance"
     ]
 
-
-    # Train-Test Split
-
+    # ── Train-Test Split ──
     X = df.drop(columns=["Need_Maintenance"])
     y = df["Need_Maintenance"]
 
@@ -72,9 +65,7 @@ def encode_and_split():
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-
-    # Column Transformer
-
+    # ── Column Transformer ──
     ordinal_transformer = OrdinalEncoder(
         categories=[ordinal_features[k] for k in ordinal_features],
         handle_unknown="use_encoded_value",
@@ -100,15 +91,15 @@ def encode_and_split():
     X_train_proc = preprocessor.fit_transform(X_train)
     X_test_proc = preprocessor.transform(X_test)
 
-
-    # SMOTE
-
+    # ── SMOTE ──
     smote = SMOTE(random_state=42)
     X_train_sm, y_train_sm = smote.fit_resample(X_train_proc, y_train)
 
-    return X_train_sm, X_test_proc, y_train_sm, y_test
+    return X_train_sm, X_test_proc, y_train_sm, y_test, preprocessor
+
 
 if __name__ == "__main__":
-    X_train_sm, X_test_proc, y_train_sm, y_test = encode_and_split()
-    print("Encoding successful.")
-    print("Train shape:", X_train_sm.shape)
+    X_train_sm, X_test_proc, y_train_sm, y_test, preprocessor = encode_and_split()
+    print("✓ Encoding successful.")
+    print(f"  Training set shape: {X_train_sm.shape}")
+    print(f"  Test set shape: {X_test_proc.shape}")
