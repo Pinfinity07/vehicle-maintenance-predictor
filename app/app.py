@@ -3,7 +3,7 @@ Gradio app for Vehicle Maintenance Predictor.
 Loads pre-trained model artifacts from models/ — no training on startup.
 
 Usage:
-    python app.py
+    python app/app.py
 """
 
 import warnings
@@ -19,7 +19,7 @@ import gradio as gr
 
 
 # ── Load pre-trained artifacts ───────────────────────────────
-MODEL_DIR = Path(__file__).parent / "models"
+MODEL_DIR = Path(__file__).parent.parent / "models"
 
 print("=" * 60)
 print("Vehicle Maintenance Predictor - Loading model...")

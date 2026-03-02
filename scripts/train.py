@@ -2,7 +2,7 @@
 Train the Vehicle Maintenance Predictor and save artifacts.
 
 Usage:
-    python train.py
+    python scripts/train.py
 
 Saves to models/:
     model.joblib, preprocessor.joblib, feature_order.pkl
@@ -11,8 +11,12 @@ Saves to models/:
 import warnings
 warnings.filterwarnings("ignore")
 
+import sys
 import pickle
 from pathlib import Path
+
+# Add project root to path so pipeline/ is importable
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import numpy as np
 import pandas as pd
@@ -29,7 +33,7 @@ from imblearn.over_sampling import SMOTE
 from pipeline.cleaning import load_and_preprocess_data
 
 # ── Paths ────────────────────────────────────────────────────
-OUTPUT_DIR = Path(__file__).parent / "models"
+OUTPUT_DIR = Path(__file__).parent.parent / "models"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 

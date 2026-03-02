@@ -11,10 +11,12 @@ A machine learning pipeline for predicting vehicle maintenance requirements usin
 vehicle-maintenance-predictor/
 ├── README.md                          # Project documentation
 ├── requirements.txt                   # Python dependencies
-├── train.py                           # Train model & save artifacts
-├── app.py                             # Gradio web application
 ├── data/
 │   └── raw_dataset.csv               # Raw dataset
+├── scripts/
+│   └── train.py                      # Train model & save artifacts
+├── app/
+│   └── app.py                        # Gradio web application
 ├── pipeline/                          # ML pipeline modules
 │   ├── __init__.py
 │   ├── cleaning.py                   # Data cleaning & preprocessing
@@ -36,13 +38,13 @@ pip install -r requirements.txt
 
 ### Train the Model
 ```bash
-python train.py
+python scripts/train.py
 ```
 This runs the full pipeline and saves artifacts to `models/`.
 
 ### Run Web App
 ```bash
-python app.py
+python app/app.py
 ```
 Loads the pre-trained model and launches a Gradio interface.
 
