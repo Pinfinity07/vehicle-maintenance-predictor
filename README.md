@@ -144,7 +144,3 @@ python -m pytest tests/
 ## 📄 License
 
 MIT License
-
-## 👤 Author
-
-Manan Kapoor
