@@ -10,13 +10,13 @@ A machine learning pipeline for predicting vehicle maintenance requirements usin
 ```
 vehicle-maintenance-predictor/
 ├── README.md                          # Project documentation
-├── requirements.txt                   # Python dependencies
 ├── data/
 │   └── raw_dataset.csv               # Raw dataset
 ├── scripts/
 │   └── train.py                      # Train model & save artifacts
 ├── app/
-│   └── app.py                        # Gradio web application
+│   ├── app.py                        # Gradio web application
+│   └── requirements.txt              # Python dependencies
 ├── pipeline/                          # ML pipeline modules
 │   ├── __init__.py
 │   ├── cleaning.py                   # Data cleaning & preprocessing
@@ -33,7 +33,7 @@ vehicle-maintenance-predictor/
 ### Setup
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -r app/requirements.txt
 ```
 
 ### Train the Model
