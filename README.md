@@ -2,6 +2,9 @@
 
 A machine learning pipeline for predicting vehicle maintenance requirements using Decision Tree classification with GridSearchCV optimization.
 
+🔗 **Live Demo:** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
+📄 **Project Report:** [Google Drive](https://drive.google.com/file/d/16fxy-LBw1LDIxirKwgz1W-qLFJUW7h1c/view?usp=sharing)
+
 ## 🎯 Project Structure
 
 ```
