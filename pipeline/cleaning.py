@@ -1,7 +1,6 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -10,8 +9,7 @@ from pathlib import Path
 def get_data_path():
     """Get the path to raw dataset, handling different directory structures."""
     possible_paths = [
-        Path(__file__).parent.parent.parent / "data" / "raw_dataset.csv",
-        Path.cwd() / "data" / "raw_dataset.csv",
+        Path(__file__).parent.parent / "data" / "raw_dataset.csv",
         Path.cwd() / "data" / "raw_dataset.csv",
     ]
     
