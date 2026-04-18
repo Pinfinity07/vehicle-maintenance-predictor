@@ -10,8 +10,24 @@ from agent import (
     answer_question,
     get_missing_features,
     handle_message,
+    get_graph,
     REQUIRED_FEATURES,
 )
+
+
+# ---------------------------------------------------------------------------
+# LangGraph StateGraph compilation
+# ---------------------------------------------------------------------------
+
+def test_graph_compiles_with_all_nodes():
+    graph = get_graph()
+    nodes = set(graph.get_graph().nodes)
+    expected = {
+        "classify", "extract", "answer", "offtopic", "ask_followup",
+        "predict", "retrieve_modifiers", "apply_modifiers",
+        "retrieve_guidelines", "generate_report",
+    }
+    assert expected.issubset(nodes), f"missing nodes: {expected - nodes}"
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +173,20 @@ def test_answer_question_fallback_lists_options():
 # ---------------------------------------------------------------------------
 
 def test_handle_message_question_does_not_extract():
-    """When user asks a question, bot should NOT try to extract features,
-    and should answer instead."""
+    """When user asks a question, bot should answer instead of pushing a full
+    batch followup. Extraction may run but return nothing for a pure question."""
     with patch("agent._get_llm") as mock_get:
-        # 1st call: intent classifier -> question
-        # 2nd call: answer_question -> direct answer
+        # Graph calls _get_llm for: classify, extract, answer
+        def factory(*a, **kw):
+            return _mock_llm_returning(
+                '{"extracted": {}, "extra_info": [], "confidence": "high"}'
+            )
         calls = iter([
             _mock_llm_returning('{"intent": "question", "topic": "owner"}'),
+            _mock_llm_returning('{"extracted": {}, "extra_info": [], "confidence": "high"}'),
             _mock_llm_returning("Owner Type is one of: First, Second, or Third."),
         ])
-        mock_get.side_effect = lambda *a, **kw: next(calls)
+        mock_get.side_effect = lambda *a, **kw: next(calls, _mock_llm_returning("{}"))
 
         response, features, extra, phase = handle_message(
             "what are the owner types?",
@@ -184,12 +204,13 @@ def test_handle_message_negation_records_zero_insurance():
     """User saying 'I have no insurance' should set Insurance_Premium=0 even
     if the LLM extractor misses it."""
     with patch("agent._get_llm") as mock_get:
-        # intent -> info; extractor returns empty (LLM missed the negation)
         calls = iter([
             _mock_llm_returning('{"intent": "info", "topic": ""}'),
             _mock_llm_returning('{"extracted": {}, "extra_info": [], "confidence": "high"}'),
         ])
-        mock_get.side_effect = lambda *a, **kw: next(calls)
+        mock_get.side_effect = lambda *a, **kw: next(
+            calls, _mock_llm_returning("{}")
+        )
 
         response, features, extra, phase = handle_message(
             "I don't have any insurance",
@@ -212,7 +233,9 @@ def test_handle_message_subsequent_turn_does_not_reask_insurance():
                 '{"extracted": {"Vehicle_Age": 5}, "extra_info": [], "confidence": "high"}'
             ),
         ])
-        mock_get.side_effect = lambda *a, **kw: next(calls)
+        mock_get.side_effect = lambda *a, **kw: next(
+            calls, _mock_llm_returning("{}")
+        )
 
         collected = {"Insurance_Premium": 0}
         response, features, extra, phase = handle_message(

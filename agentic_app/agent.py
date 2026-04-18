@@ -44,15 +44,19 @@ REQUIRED_FEATURES = {
 # State definition
 # ---------------------------------------------------------------------------
 
-class FleetState(TypedDict):
+class FleetState(TypedDict, total=False):
+    user_message: str             # Latest user message
     messages: list[dict]          # Chat history [{role, content}]
     collected_features: dict      # Features extracted so far
+    new_features: dict            # Features extracted in this turn
     extra_info: list[str]         # Extra info user mentioned (not model features)
+    intent: str                   # "question" | "info" | "mixed" | "offtopic"
     risk_modifiers: list[str]     # Retrieved risk modifier docs
     prediction: dict              # ML prediction result
     risk_level: str
     guidelines: list[str]         # Retrieved maintenance guidelines
     report: str                   # Final generated report
+    response: str                 # Final text response to user
     phase: str                    # "collecting" | "analyzing" | "done"
     api_key: str
     error: str
@@ -632,31 +636,256 @@ def retrieve_guidelines(vehicle_data: dict, risk_level: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Main conversational handler
+# LangGraph StateGraph — the agentic workflow
+# ---------------------------------------------------------------------------
+
+def node_classify_intent(state: FleetState) -> FleetState:
+    """Node: classify user intent (question / info / mixed / offtopic)."""
+    result = classify_intent(state["user_message"], state.get("api_key"))
+    return {"intent": result.get("intent", "info")}
+
+
+def node_extract_features(state: FleetState) -> FleetState:
+    """Node: extract vehicle features + apply negation heuristics."""
+    messages = state["messages"]
+    api_key = state.get("api_key")
+    collected = state["collected_features"]
+
+    new_features, new_extra = extract_features(messages, api_key, collected)
+    negation_features = apply_negation_heuristics(state["user_message"], collected)
+    for k, v in negation_features.items():
+        new_features.setdefault(k, v)
+
+    return {
+        "new_features": new_features,
+        "collected_features": {**collected, **new_features},
+        "extra_info": state["extra_info"] + [
+            e for e in new_extra if e and e not in state["extra_info"]
+        ],
+    }
+
+
+def node_answer_question(state: FleetState) -> FleetState:
+    """Node: answer the user's question about feature options."""
+    missing = get_missing_features(state["collected_features"])
+    answer = answer_question(
+        state["user_message"], missing, state["collected_features"], state.get("api_key")
+    )
+    n_collected = len(REQUIRED_FEATURES) - len(missing)
+    header = f"**[{n_collected}/{len(REQUIRED_FEATURES)} features collected]**\n\n"
+    new_features = state.get("new_features", {})
+    if new_features:
+        summary = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in new_features.items())
+        header += f"Got it, I've noted: {summary}\n\n"
+    return {"response": header + answer, "phase": "collecting"}
+
+
+def node_offtopic(state: FleetState) -> FleetState:
+    """Node: politely redirect off-topic questions."""
+    missing = get_missing_features(state["collected_features"])
+    reply = ("I can only help with vehicle maintenance and fleet management questions. "
+             "Could we get back to your vehicle? " +
+             (build_followup_question(missing, state["collected_features"]) if missing else ""))
+    return {"response": reply, "phase": "collecting" if missing else "done"}
+
+
+def node_ask_followup(state: FleetState) -> FleetState:
+    """Node: ask for missing features."""
+    missing = get_missing_features(state["collected_features"])
+    n_collected = len(REQUIRED_FEATURES) - len(missing)
+    progress = f"**[{n_collected}/{len(REQUIRED_FEATURES)} features collected]**\n\n"
+    new_features = state.get("new_features", {})
+    if new_features:
+        summary = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in new_features.items())
+        progress += f"Got it, I've noted: {summary}\n\n"
+    extra_info = state["extra_info"]
+    if extra_info and len(extra_info) > len(state.get("_prev_extra_len", [])):
+        new_extras = extra_info[-(len(extra_info) - len(state.get("_prev_extra_len", []))):]
+        if new_extras:
+            progress += f"I've also noted the additional context: {', '.join(new_extras)}\n\n"
+    followup = build_followup_question(missing, state["collected_features"])
+    return {"response": progress + "I still need a few more details:\n\n" + followup,
+            "phase": "collecting"}
+
+
+def node_predict(state: FleetState) -> FleetState:
+    """Node: run ML prediction on collected features."""
+    prediction = predict(state["collected_features"])
+    return {"prediction": prediction, "risk_level": prediction["risk_level"]}
+
+
+def node_retrieve_modifiers(state: FleetState) -> FleetState:
+    """Node: RAG retrieval of risk modifier docs based on extra info."""
+    mods = retrieve_risk_modifiers(state["extra_info"])
+    return {"risk_modifiers": mods}
+
+
+def node_apply_modifiers(state: FleetState) -> FleetState:
+    """Node: LLM-driven risk adjustment from extra info."""
+    adjusted = apply_risk_modifiers(
+        state["prediction"], state["risk_modifiers"],
+        state["extra_info"], state.get("api_key")
+    )
+    return {"prediction": adjusted, "risk_level": adjusted["risk_level"]}
+
+
+def node_retrieve_guidelines(state: FleetState) -> FleetState:
+    """Node: RAG retrieval of maintenance guidelines."""
+    guidelines = retrieve_guidelines(state["collected_features"], state["risk_level"])
+    return {"guidelines": guidelines}
+
+
+def node_generate_report(state: FleetState) -> FleetState:
+    """Node: LLM structured report generation with trace."""
+    report = generate_report(
+        state["collected_features"], state["prediction"], state["guidelines"],
+        state["extra_info"], state["risk_modifiers"], state.get("api_key")
+    )
+    new_features = state.get("new_features", {})
+    if new_features:
+        summary = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in new_features.items())
+        intro = f"Got it — {summary}.\n\nAll vehicle details collected. Running analysis now...\n\n"
+    else:
+        intro = "All vehicle details collected. Running analysis now...\n\n"
+
+    trace = f"""---
+
+**Agent Workflow Trace (LangGraph):**
+1. **classify_intent** → info
+2. **extract_features** → Collected {len(state['collected_features'])} features
+3. **predict_maintenance** → risk={state['prediction']['risk_level']}, probability={state['prediction']['probability']:.1%}"""
+    if state["extra_info"]:
+        trace += f"\n4. **retrieve_risk_modifiers** → {len(state['risk_modifiers'])} modifier docs"
+        trace += f"\n5. **apply_risk_modifiers** → adjusted risk"
+        trace += f"\n6. **retrieve_guidelines** → {len(state['guidelines'])} guideline docs"
+        trace += f"\n7. **generate_report** → {'LLM' if state.get('api_key') else 'rule-based'}"
+    else:
+        trace += f"\n4. **retrieve_guidelines** → {len(state['guidelines'])} guideline docs"
+        trace += f"\n5. **generate_report** → {'LLM' if state.get('api_key') else 'rule-based'}"
+
+    return {"response": intro + report + "\n\n" + trace, "report": report, "phase": "done"}
+
+
+# ---------------------------------------------------------------------------
+# Routing functions (conditional edges)
+# ---------------------------------------------------------------------------
+
+def route_after_intent(state: FleetState) -> str:
+    """After classifying intent, decide next node."""
+    intent = state.get("intent", "info")
+    if intent == "offtopic":
+        return "offtopic"
+    # question/mixed/info all extract first (mixed has info in it too)
+    return "extract"
+
+
+def route_after_extract(state: FleetState) -> str:
+    """After extracting features, decide next node."""
+    intent = state.get("intent", "info")
+    missing = get_missing_features(state["collected_features"])
+    if intent in ("question", "mixed") and missing:
+        return "answer"
+    if missing:
+        return "ask_followup"
+    return "predict"
+
+
+# ---------------------------------------------------------------------------
+# Build the graph (compiled once)
+# ---------------------------------------------------------------------------
+
+def _build_graph():
+    g = StateGraph(FleetState)
+    g.add_node("classify", node_classify_intent)
+    g.add_node("extract", node_extract_features)
+    g.add_node("answer", node_answer_question)
+    g.add_node("offtopic", node_offtopic)
+    g.add_node("ask_followup", node_ask_followup)
+    g.add_node("predict", node_predict)
+    g.add_node("retrieve_modifiers", node_retrieve_modifiers)
+    g.add_node("apply_modifiers", node_apply_modifiers)
+    g.add_node("retrieve_guidelines", node_retrieve_guidelines)
+    g.add_node("generate_report", node_generate_report)
+
+    g.set_entry_point("classify")
+    g.add_conditional_edges(
+        "classify", route_after_intent,
+        {"offtopic": "offtopic", "extract": "extract"},
+    )
+    g.add_conditional_edges(
+        "extract", route_after_extract,
+        {"answer": "answer", "ask_followup": "ask_followup", "predict": "predict"},
+    )
+    g.add_edge("predict", "retrieve_modifiers")
+    g.add_edge("retrieve_modifiers", "apply_modifiers")
+    g.add_edge("apply_modifiers", "retrieve_guidelines")
+    g.add_edge("retrieve_guidelines", "generate_report")
+    g.add_edge("generate_report", END)
+    g.add_edge("answer", END)
+    g.add_edge("offtopic", END)
+    g.add_edge("ask_followup", END)
+    return g.compile()
+
+
+_COMPILED_GRAPH = None
+
+
+def get_graph():
+    """Lazily compile the LangGraph StateGraph."""
+    global _COMPILED_GRAPH
+    if _COMPILED_GRAPH is None:
+        _COMPILED_GRAPH = _build_graph()
+    return _COMPILED_GRAPH
+
+
+# ---------------------------------------------------------------------------
+# Main conversational handler (invokes the compiled graph)
 # ---------------------------------------------------------------------------
 
 def handle_message(user_message: str, chat_history: list[dict],
                    collected_features: dict, extra_info: list[str],
                    api_key: str | None) -> tuple[str, dict, list[str], str]:
-    """Process a user message and return (response, updated_features, updated_extra, phase).
+    """Invoke the LangGraph agent and return (response, features, extra_info, phase)."""
+    initial_state: FleetState = {
+        "user_message": user_message,
+        "messages": chat_history + [{"role": "user", "content": user_message}],
+        "collected_features": collected_features,
+        "new_features": {},
+        "extra_info": extra_info,
+        "intent": "info",
+        "risk_modifiers": [],
+        "prediction": {},
+        "risk_level": "",
+        "guidelines": [],
+        "report": "",
+        "response": "",
+        "phase": "collecting",
+        "api_key": api_key or "",
+        "error": "",
+    }
+    final_state = get_graph().invoke(initial_state)
+    return (
+        final_state["response"],
+        final_state["collected_features"],
+        final_state["extra_info"],
+        final_state["phase"],
+    )
 
-    Returns:
-        - response: assistant's reply text
-        - collected_features: updated feature dict
-        - extra_info: updated extra info list
-        - phase: "collecting" | "analyzing" | "done"
-    """
-    # Add user message to history for extraction context
+
+# ---------------------------------------------------------------------------
+# Legacy procedural handler (kept for reference / tests)
+# ---------------------------------------------------------------------------
+
+def _handle_message_procedural(user_message: str, chat_history: list[dict],
+                               collected_features: dict, extra_info: list[str],
+                               api_key: str | None) -> tuple[str, dict, list[str], str]:
+    """Procedural fallback — mirrors the graph flow without LangGraph."""
     messages = chat_history + [{"role": "user", "content": user_message}]
-
-    # Step 0: Classify intent — is the user asking a question or providing info?
     intent_result = classify_intent(user_message, api_key)
     intent = intent_result.get("intent", "info")
 
-    # Step 1: Extract features only if user is providing info (info or mixed)
-    if intent in ("info", "mixed"):
+    if intent in ("info", "mixed", "question"):
         new_features, new_extra = extract_features(messages, api_key, collected_features)
-        # Deterministic negation fallback (e.g., "no insurance" -> Insurance_Premium=0)
         negation_features = apply_negation_heuristics(user_message, collected_features)
         for k, v in negation_features.items():
             new_features.setdefault(k, v)
@@ -665,20 +894,15 @@ def handle_message(user_message: str, chat_history: list[dict],
     else:
         new_features, new_extra = {}, []
 
-    # Step 2: Check what's missing
     missing = get_missing_features(collected_features)
 
-    # If the user asked a question (pure question or mixed), answer it first
     if intent in ("question", "mixed") and missing:
         answer = answer_question(user_message, missing, collected_features, api_key)
         n_collected = len(REQUIRED_FEATURES) - len(missing)
-        n_total = len(REQUIRED_FEATURES)
-        header = f"**[{n_collected}/{n_total} features collected]**\n\n"
+        header = f"**[{n_collected}/{len(REQUIRED_FEATURES)} features collected]**\n\n"
         if new_features:
-            extracted_summary = ", ".join(
-                f"{k.replace('_', ' ')}: {v}" for k, v in new_features.items()
-            )
-            header += f"Got it, I've noted: {extracted_summary}\n\n"
+            summary = ", ".join(f"{k.replace('_', ' ')}: {v}" for k, v in new_features.items())
+            header += f"Got it, I've noted: {summary}\n\n"
         return header + answer, collected_features, extra_info, "collecting"
 
     if intent == "offtopic":

@@ -101,12 +101,26 @@ LangGraph-based agent that autonomously reasons about vehicle health, retrieves 
 
 ### Tech Stack
 
-- **Agent Framework:** LangGraph (state-based workflow with conditional routing)
+- **Agent Framework:** LangGraph (compiled `StateGraph` with 10 nodes + conditional edges)
 - **LLM:** Groq free tier (Llama 3.3 70B Versatile)
 - **RAG:** FAISS vector store + `all-MiniLM-L6-v2` embeddings
 - **Knowledge Base:** 12 vehicle maintenance guideline documents
-- **UI:** Gradio
+- **UI:** Gradio (monochrome theme)
 - **ML Model:** Decision Tree + SMOTE + GridSearchCV (from Milestone 1)
+
+### Design Choices & Justification
+
+| Decision | Why |
+|---|---|
+| **LangGraph over raw LLM chains** | Needs branching (question vs info vs off-topic), state accumulation across turns, and conditional routing between collection / analysis phases. `StateGraph` makes this explicit and debuggable. |
+| **Groq Llama 3.3 70B Versatile** | Free tier, fast inference (~500 tok/s), strong instruction-following for JSON outputs needed by the intent classifier and feature extractor. |
+| **FAISS + MiniLM-L6-v2** | FAISS is lightweight (no DB server), MiniLM-L6 is 22 MB and produces 384-dim embeddings — enough semantic recall for a ~12-document corpus without GPU. |
+| **Two separate RAG corpora** | One for **maintenance guidelines** (prescriptive: "replace brake pads every 50k km") and one for **risk modifiers** (conditional: "rough roads → +20% wear"). Keeping them separate prevents the report generator from mixing prescriptions with risk adjustments. |
+| **LLM intent classifier before extraction** | Stops the bot from pushing the same follow-up question when the user is actually asking about options ("what are the owner types"). Avoids the common agentic failure mode of tunnel-visioning on data collection. |
+| **Deterministic negation heuristics** | The LLM extractor sometimes misses explicit absence ("no insurance"). A regex fallback guarantees `Insurance_Premium=0` is recorded so the bot stops re-asking. Covered by 15 pytest cases. |
+| **Decision Tree (not deep model)** | Trained on 8k synthetic + Kaggle-shape rows; interpretable, fast to train, and `feature_importances_` feeds the "top contributing factors" section of the report. |
+| **Rule-based fallback for reports** | Graceful degradation when `GROQ_API_KEY` is absent or the API fails mid-conversation — the app still returns a usable prioritized action plan. |
+| **Prompt engineering** | All JSON-producing prompts use explicit schemas + "return ONLY JSON, no markdown" guards, plus a markdown-fence stripper in the parser to handle models that still wrap responses. |
 
 ### Structured Output
 
@@ -126,7 +140,9 @@ cd agentic_app
 # Install dependencies
 pip install -r requirements.txt
 
-# Set your Groq API key
+# Set your Groq API key (copy the example and fill in)
+cp .env.example .env
+# then edit .env with your key, or export directly:
 export GROQ_API_KEY=gsk_your_key_here
 
 # Launch the app
@@ -139,7 +155,17 @@ The app also works **without** a Groq API key — it falls back to a rule-based 
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GROQ_API_KEY` | Optional | Groq API key for LLM report generation. Without it, rule-based fallback is used. |
+| `GROQ_API_KEY` | Optional | Groq API key for LLM report generation. Without it, rule-based fallback is used. See `agentic_app/.env.example`. |
+
+### Running the Tests
+
+```bash
+cd agentic_app
+pip install pytest
+pytest tests/ -v
+```
+
+The test suite covers: negation heuristics (15 parameterized cases), intent classification, LangGraph compilation, end-to-end message handling with mocked LLM, and zero-value feature handling. **28 tests, all passing.**
 
 ---
 
