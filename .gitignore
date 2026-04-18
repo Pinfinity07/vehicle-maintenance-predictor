@@ -31,3 +31,5 @@ models/*.pkl
 models/*.zip
 .gradio/
 *.log
+.env
+.omc/

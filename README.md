@@ -1,146 +1,186 @@
-# Vehicle Maintenance Predictor
+# Vehicle Maintenance Prediction & Agentic Fleet Management
 
-A machine learning pipeline for predicting vehicle maintenance requirements using Decision Tree classification with GridSearchCV optimization.
+An AI-driven fleet analytics system that predicts vehicle maintenance requirements (Milestone 1) and extends into an agentic AI fleet management assistant (Milestone 2).
 
-🔗 **Live Demo:** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
-📄 **Project Report:** [Google Drive](https://drive.google.com/file/d/16fxy-LBw1LDIxirKwgz1W-qLFJUW7h1c/view?usp=sharing)
+**Live Demo (End-Sem):** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
+**Live Demo (Mid-Sem):** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
+**GitHub:** [Repository](https://github.com/Pinfinity07/vehicle-maintenance-predictor)
 
-## 🎯 Project Structure
+---
+
+## Project Structure
 
 ```
 vehicle-maintenance-predictor/
-├── README.md                          # Project documentation
-├── data/
-│   └── raw_dataset.csv               # Raw dataset
+├── README.md
+├── .gitignore
+│
+├── # ── Milestone 1: ML Pipeline ──
+├── dataset/
+│   └── raw_dataset.csv                 # Raw vehicle maintenance dataset
 ├── scripts/
-│   └── train.py                      # Train model & save artifacts
+│   └── train.py                        # Train model & save artifacts
 ├── app/
-│   ├── app.py                        # Gradio web application
-│   └── requirements.txt              # Python dependencies
-├── pipeline/                          # ML pipeline modules
+│   ├── app.py                          # Mid-sem Gradio web app
+│   └── requirements.txt               # Mid-sem dependencies
+├── pipeline_modules/
 │   ├── __init__.py
-│   ├── cleaning.py                   # Data cleaning & preprocessing
-│   ├── encoding.py                   # Feature encoding & SMOTE
-│   └── training.py                   # Model training with GridSearchCV
-└── models/                            # Saved model artifacts
-    ├── model.joblib                   # Trained DecisionTreeClassifier
-    ├── preprocessor.joblib            # Fitted ColumnTransformer
-    └── feature_order.pkl              # Feature column order
+│   ├── cleaning.py                     # Data cleaning & preprocessing
+│   ├── encoding.py                     # Feature encoding & SMOTE
+│   └── training.py                     # Model training with GridSearchCV
+├── final_pipeline/
+│   └── master_pipeline.ipynb           # Complete ML pipeline notebook
+│
+├── # ── Milestone 2: Agentic AI ──
+└── agentic_app/
+    ├── app.py                          # Gradio UI (main entry)
+    ├── agent.py                        # LangGraph state-based agent workflow
+    ├── model_utils.py                  # ML model training & prediction
+    ├── rag_utils.py                    # FAISS RAG pipeline + knowledge base
+    ├── requirements.txt                # End-sem dependencies
+    └── artifacts/                      # Pre-trained model files
+        ├── model.joblib
+        ├── preprocessor.joblib
+        └── columns.joblib
 ```
 
-## 🚀 Quick Start
+---
 
-### Setup
+## Milestone 1: ML-Based Maintenance Prediction (Mid-Sem)
+
+Classical ML pipeline for predicting vehicle maintenance needs.
+
+### Pipeline
+
+1. **Data Cleaning** — null removal, duplicate handling, date feature engineering, IQR outlier clipping
+2. **Feature Engineering** — Mutual Information selection, OrdinalEncoder, OneHotEncoder, RobustScaler
+3. **Class Balancing** — SMOTE oversampling on training set
+4. **Model Training** — Decision Tree with GridSearchCV (5-fold Stratified CV, F1 optimization)
+
+### Quick Start (Milestone 1)
+
 ```bash
-# Install dependencies
 pip install -r app/requirements.txt
+python scripts/train.py     # Train and save model
+python app/app.py            # Launch mid-sem Gradio app
 ```
 
-### Train the Model
+---
+
+## Milestone 2: Agentic AI Fleet Management (End-Sem)
+
+LangGraph-based agent that autonomously reasons about vehicle health, retrieves maintenance guidelines via RAG, and generates structured fleet management reports.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    LangGraph Agent Workflow                  │
+│                                                             │
+│  ┌──────────────┐   ┌──────────────────┐   ┌────────────┐  │
+│  │   Analyze     │──▶│     Predict      │──▶│  Retrieve  │  │
+│  │   Vehicle     │   │   Maintenance    │   │ Guidelines │  │
+│  │              │   │   (ML Model)     │   │  (RAG)     │  │
+│  └──────────────┘   └──────────────────┘   └─────┬──────┘  │
+│                                                   │         │
+│                         ┌─────────────────────────▼──────┐  │
+│                         │     Generate Report            │  │
+│                         │     (Groq / Llama 3.3 70B)     │  │
+│                         └────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Agent Nodes
+
+| Node | Function | Description |
+|------|----------|-------------|
+| `analyze_vehicle` | Parse & validate | Processes raw vehicle input data |
+| `predict_maintenance` | ML prediction | Decision Tree model → risk level + probability |
+| `retrieve_guidelines` | RAG retrieval | FAISS + sentence-transformers → relevant maintenance docs |
+| `generate_report` | LLM generation | Groq/Llama 3.3 → structured health report |
+
+### Tech Stack
+
+- **Agent Framework:** LangGraph (state-based workflow with conditional routing)
+- **LLM:** Groq free tier (Llama 3.3 70B Versatile)
+- **RAG:** FAISS vector store + `all-MiniLM-L6-v2` embeddings
+- **Knowledge Base:** 12 vehicle maintenance guideline documents
+- **UI:** Gradio
+- **ML Model:** Decision Tree + SMOTE + GridSearchCV (from Milestone 1)
+
+### Structured Output
+
+The agent generates reports containing:
+- **Health Summary** — Vehicle status and risk assessment
+- **Action Plan** — Prioritized maintenance actions with timelines
+- **Maintenance Schedule** — Immediate, 30-day, 90-day, 6-month plan
+- **Cost Estimates** — Approximate repair cost ranges
+- **Sources** — Retrieved maintenance guidelines that informed the report
+- **Disclaimer** — Operational safety notice
+
+### Quick Start (Milestone 2)
+
 ```bash
-python scripts/train.py
-```
-This runs the full pipeline and saves artifacts to `models/`.
+cd agentic_app
 
-### Run Web App
-```bash
-python app/app.py
-```
-Loads the pre-trained model and launches a Gradio interface.
+# Install dependencies
+pip install -r requirements.txt
 
-## 📊 Pipeline Stages
+# Set your Groq API key
+export GROQ_API_KEY=gsk_your_key_here
 
-1. **Data Cleaning** (`pipeline/cleaning.py`)
-   - Load raw dataset
-   - Remove duplicates and null values
-   - Date feature engineering
-   - Outlier clipping using IQR method
-
-2. **Feature Engineering** (`pipeline/encoding.py`)
-   - Mutual Information-based feature selection
-   - Ordinal encoding for categorical features
-   - One-hot encoding for nominal features
-   - Robust scaling for numerical features
-   - SMOTE for class imbalance handling
-
-3. **Model Training** (`pipeline/training.py`)
-   - Stratified K-Fold Cross-Validation (5 splits)
-   - GridSearchCV hyperparameter tuning
-   - Decision Tree Classifier
-   - F1-score optimization
-
-## 🧠 Model Details
-
-**Algorithm**: Decision Tree Classifier
-**Hyperparameters Tuned**:
-- max_depth: [3, 5, 7, 10, None]
-- min_samples_leaf: [1, 5, 10, 20]
-- criterion: [gini, entropy]
-
-**Validation**: 5-fold Stratified Cross-Validation
-**Optimization Metric**: F1-Score
-**Imbalance Handling**: SMOTE
-
-## 🎨 Web Application
-
-Interactive Gradio interface for making predictions with:
-- Vehicle profile inputs (model, fuel type, transmission, etc.)
-- Component status inputs (tires, brakes, battery)
-- Operational metrics (mileage, age, odometer, fuel efficiency)
-- Real-time predictions with confidence scores
-
-## 📈 Performance
-
-Test Results:
-- Accuracy: 1.0000
-- Precision: 1.0000
-- Recall: 1.0000
-- F1-Score: 1.0000
-
-## 🔄 Data Flow
-
-```
-raw_dataset.csv
-    ↓
-[Cleaning] → Handle nulls, remove duplicates, date engineering, outlier clipping
-    ↓
-[Feature Engineering] → MI selection, encoding (ordinal/one-hot), scaling, SMOTE
-    ↓
-[Train-Test Split] → 80/20 split with stratification
-    ↓
-[Model Training] → GridSearchCV with 5-fold CV
-    ↓
-[Prediction] → Real-time predictions via web app
+# Launch the app
+python app.py
 ```
 
-## 📝 Input Features
+The app also works **without** a Groq API key — it falls back to a rule-based report generator. With the key, you get full LLM-powered structured reports.
 
-- Vehicle_Model, Fuel_Type, Transmission_Type, Owner_Type
-- Maintenance_History, Tire_Condition, Brake_Condition, Battery_Status
-- Mileage, Vehicle_Age, Odometer_Reading, Fuel_Efficiency
-- Reported_Issues, Service_History, Accident_History, Engine_Size
+### Environment Variables
 
-## 🛠️ Development
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Optional | Groq API key for LLM report generation. Without it, rule-based fallback is used. |
 
-### Adding New Features
-1. Update `pipeline/cleaning.py` for preprocessing
-2. Update `pipeline/encoding.py` for feature engineering
-3. Modify `app.py` UI if needed
+---
 
-### Running Tests
-```bash
-python -m pytest tests/
-```
+## Deployment (Hugging Face Spaces)
 
-## 📦 Dependencies
+The end-sem app is deployed on HuggingFace Spaces:
 
-- scikit-learn: ML algorithms
-- pandas: Data manipulation
-- numpy: Numerical computing
-- imbalanced-learn: SMOTE implementation
-- gradio: Web UI framework
-- matplotlib: Visualization
+1. Create a new Space (SDK: Gradio)
+2. Upload all files from `agentic_app/`
+3. Add `GROQ_API_KEY` as a secret in Space Settings
+4. The app auto-deploys
 
-## 📄 License
+---
+
+## Model Performance
+
+### Milestone 1 (Decision Tree)
+- **Accuracy:** 1.0000
+- **Precision:** 1.0000
+- **Recall:** 1.0000
+- **F1-Score:** 1.0000
+- **Validation:** 5-fold Stratified Cross-Validation
+
+### Milestone 2 (Agent Quality)
+- Correct risk classification across vehicle profiles (CRITICAL → LOW)
+- Relevant RAG retrieval (brake query → brake docs, tire query → tire docs)
+- Structured LLM output with actionable recommendations
+- Graceful fallback when LLM is unavailable
+
+---
+
+## Dependencies
+
+### Milestone 1
+scikit-learn, pandas, numpy, imbalanced-learn, gradio, matplotlib
+
+### Milestone 2
+langgraph, langchain-groq, langchain-community, langchain-huggingface, faiss-cpu, sentence-transformers, scikit-learn, imbalanced-learn, gradio
+
+---
+
+## License
 
 MIT License
