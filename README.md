@@ -3,8 +3,6 @@
 An AI-driven fleet analytics system that predicts vehicle maintenance requirements (Milestone 1) and extends into an agentic AI fleet management assistant (Milestone 2).
 
 **Live Demo (End-Sem):** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
-**Live Demo (Mid-Sem):** [Hugging Face Space](https://huggingface.co/spaces/kaori02/vehicle-maintenance-predictor)
-**GitHub:** [Repository](https://github.com/Pinfinity07/vehicle-maintenance-predictor)
 
 ---
 
